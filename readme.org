@@ -1,0 +1,37 @@
+* clojure project for fun & excitement
+
+testing out functionality in react wrappers.
+
+Do I care? Would I rather my own diffing algorithm with a clojure html renderer?
+Maybe. But we'll try this first and see if it's good.
+
+** architecture
+*** initial go
+one toplevel database. all components with state updates will =add-watch= to this
+and run a datalog query to update an internal =reagent/atom= that will (maybe)
+cause the component to be rerendered.
+The watch needs to be removed on teardown I guess.
+This basic query / update logic can be extracted its own component and used w/ =reagent/track=
+*** odoyle rules
+- seems cool. more reactive than datalog. you do have to crawl your way back to
+  reactivity BUT its nice that queries don't have to be added as a rule first and
+  that you can just query whenever w/ no side effects.
+  I want the awesome query language WITH the reactivity.
+  And to be able to revoke rules.
+  I might actually look into [[https://github.com/denistakeda/posh][posh]] bc this rules engine has been a pita
+  - and it'd be nice to pick if you want your query to run reactively or if you want
+    to recalculate it on a render. Well I guess this is doable. you can have useless
+    queries that wont be aggressively updated in odoyle
+- problems:
+  - how do you retract a rule when the element unmounts?
+  - how do you parameterize a query? - you basically can't
+  - could you insert a fact to be able to?
+    - so you insert a fact that has your rerender atom.
+    - this fact has id's and you perform joins. so you don't really need a query
+** chord visualizer
+input a set of notes and see how they look on the guitar neck so you can
+visualize the various ways you can play a chord.
+
+** todo
+- fix my cider-jack-in to not mess w/ shadow
+- add "note" dots
