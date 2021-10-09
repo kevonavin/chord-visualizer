@@ -32,6 +32,19 @@ This basic query / update logic can be extracted its own component and used w/ =
 input a set of notes and see how they look on the guitar neck so you can
 visualize the various ways you can play a chord.
 
+** odoyle
+*** parameterized queries
+- intermediate id for one match. Thats kinda easy.
+- what about all matches?
+  - could maybe introduce an auxiliary data structure that accumulates on each
+    match?
+    - steps:
+      - preliminary-- insert rule that uses auxiliary id to attach parameters
+        to join them to existing facts.
+        -- for the fire, conj match to the fact's atom
+      - generate auxiliary fact for it with an atom. start accumulator
+      - insert auxiliary fact, fire rules.
+      - retrieve atom's value, remove auxiliary fact
 ** todo
 - fix my cider-jack-in to not mess w/ shadow
 - add "note" dots
