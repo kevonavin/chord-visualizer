@@ -5,23 +5,9 @@
    [reagent.dom :as rdom]
    [reagent.ratom :as ratom]
    [odoyle.rules :as o]
-   [cljs.pprint :as pprint])
+   [cljs.pprint :as pprint]
+   [kev.web.utils :as kwu])
   (:require-macros [odoyle.rules :as o]))
-
-(defn ezip
-  "like zip, but adds nils if one is shorter"
-  [s1 s2]
-  (loop [[h1 & t1] s1
-         [h2 & t2] s2
-         sr []]
-    (if (or h1 h2)
-      (recur t1 t2 (conj sr [h1 h2]))
-      sr)))
-
-(def getid
-  (let [atm (atom 0)]
-    (fn []
-      (swap! atm inc))))
 
 (def fret-multiplier (Math/pow 0.5 (/ 1 12)))
 
@@ -97,67 +83,12 @@
      [::fretboard :fretboard/num-frets num-frets]
      [::fretboard :fretboard/fret-seq fseq {:then not=}]
      :then
-     (doseq [[fnum fsf] (ezip (range num-frets) fseq)]
+     (doseq [[fnum fsf] (kwu/ezip (range num-frets) fseq)]
        (cond
          (nil? fsf)
-         (o/insert! (getid) :fret/number fnum)
+         (o/insert! (random-uuid) :fret/number fnum)
          (nil? fnum)
          (o/retract! fsf :fret/number)))]}))
-
-;; interview
-;; say you have a database of items of the form [id attr value]
-;;
-;; e.g. you
-;; write a query language that accepts AND queries
-;; looking like
-;; [?x :painting-id ?y]
-;; [?y :year 1917]
-#_(def *db*
-    [[1 :name "joshua reynolds"]
-     [1 :last-painting 2]
-     [1 :birth-date 1697]
-     [2 :painting-name "big sur"]])
-
-(defn do-query [db q])
-
-(defn params-for [[in & remains :as _query]]
-  (when (= :in in)
-    (->> remains
-         (take-while (complement keyword?)))))
-
-(defn ->pquery-rule
-  "create a parameterized query rule. This can be used later with pquery rname.
-  rname is a qualified keyword. params are a list of params as symbols to be used.
-  These are meant to match up to things in the what clause probably."
-  [rname [in & remains :as query]]
-  (let [params (params-for query)
-        query' (if (= :in in)
-                 (drop-while symbol? remains)
-                 query)]
-    (o/->rule
-     rname
-     (-> (into [] (take 1 query')) ;; due to perf issues, we gotta do this first
-         (into (into [['pquery-aux-id :pquery/pquery-rname rname]
-                      ['pquery-aux-id :pquery/pquery-aux-atom 'pquery-aux-atom]]
-                     (map (fn [p]
-                            ['pquery-aux-id (keyword "pquery" p) p]))
-                     params))
-         (into (drop 1 query'))
-         (into [:then
-                (fn [{:keys [pquery-aux-atom] :as match}]
-                  (reset! pquery-aux-atom (dissoc match
-                                                  :pquery-aux-atom)))])
-         (doto cljs.pprint/pprint)))))
-
-(defn setup-query [sesh rule-name id ratom param-map]
-  (let [fax (merge param-map
-                   {:pquery-rname rule-name
-                    :pquery-aux-atom ratom})
-        fax' (into {}
-                   (map (fn [[k v]]
-                          [(keyword "pquery" k) v]))
-                   fax)]
-    (o/insert sesh id fax')))
 
 (def initial-facts (into [[::fretboard {:fretboard/num-frets 20
                                         :fretboard/height  850
@@ -171,45 +102,11 @@
                               :string/note n}])
                           ["e" "a" "d" "g" "b" "e"])))
 
-(defn insert-facts [sesh facts]
-  (reduce #(apply o/insert %1 %2) sesh facts))
-
-(defn remove-facts [sesh id attrs]
-  (reduce #(apply o/retract %1 %2)
-          sesh
-          (zipmap (repeat id) attrs)))
-
 (def sesh (atom (as-> (o/->session) $
                   (reduce o/add-rule $ rules)
-                  (insert-facts $ initial-facts)
+                  (kwu/insert-facts $ initial-facts)
                   (o/fire-rules $))))
 
-(defn maybe-add-rule [sesh rule-name query]
-  (if (get-in sesh [:rule-name->node-id rule-name])
-    sesh
-    (as-> sesh $
-      (o/add-rule $ (->pquery-rule rule-name query))
-      (reduce o/insert $ (o/query-all $))
-      (o/fire-rules $))))
-
-(defn rule-react2 [rule-name query sesh & args]
-  (r/with-let [atm (r/atom nil)
-               id (random-uuid)
-               param-map (zipmap (params-for query)
-                                 args)
-               _ (swap! sesh maybe-add-rule rule-name query)
-               _ (swap! sesh
-                        setup-query
-                        rule-name
-                        id
-                        atm
-                        param-map)
-               _ (swap! sesh o/fire-rules)]
-    @atm
-    (finally
-      (swap! sesh remove-facts id (map (fn [[k _v]]
-                                         (keyword "pquery" k))
-                                       param-map)))))
 
 (defn fret [w h dots notes {:keys [no-border?]}]
   (let [mark-height (/ h 3.5)
@@ -254,7 +151,7 @@
 
 (defn fret4 [sesh fret-id width height opts]
   (let [{:keys [dots notes]}
-        @(r/track rule-react2
+        @(r/track kwu/rule-react
                   ::fret4
                   '[:in fid
                     :what
@@ -265,7 +162,7 @@
 
 (defn fretboard [sesh]
   (let [{:keys [fret-seq width height]}
-        @(r/track rule-react2
+        @(r/track kwu/rule-react
                   ::fretboard-render3
                   '[:what
                     [::fretboard :fretboard/width width]
@@ -283,7 +180,6 @@
       (for [[i fret-id] remaining]
         ^{:key fret-id} [fret4 sesh fret-id width (* height (fret-height i fret-count))]))]))
 
-(split-at 2 '(1 2 3 4 5))
 (defn setting [sesh [id attr] current min max]
   [:input {:style {:width 150}
            :type "range"
@@ -296,7 +192,7 @@
 
 (defn settings [sesh]
   (let [{:keys [nfrets width height enabled-notes]}
-        @(r/track rule-react2
+        @(r/track kwu/rule-react
                   ::settings2
                   '[:what
                     [::fretboard :fretboard/num-frets nfrets]
@@ -327,7 +223,7 @@
 
 (defn tuners [sesh]
   (let [{:keys [width strings]}
-        @(r/track rule-react2
+        @(r/track kwu/rule-react
                   ::tuners
                   '[:what
                     [::fretboard :fretboard/string-seq strings]
@@ -348,7 +244,6 @@
            n])])]))
 
 (defn init []
-  (.log js/console "big wow")
   (rdom/render
    [:div
     [:div {:style {:float "left"
@@ -358,24 +253,4 @@
      [fretboard sesh]]
     [settings sesh]]
    js/document.body)
-
   79)
-
-(comment
-  (pprint/pprint
-   (o/query-all @sesh))
-  (doseq [_ (range 10)]
-    (println "."))
-  (rdom/render
-   [:div {:style {:display "inline-block"}}
-    [fretboard sesh]
-    [settings sesh]]
-   js/document.body)
-  (o/query-all @sesh)
-  (do
-    (swap! sesh o/fire-rules)
-    nil)
-  (do
-    (swap! sesh insert-facts [[::fretboard {:fretboard/height 1250}]])
-    nil)
-  99)
